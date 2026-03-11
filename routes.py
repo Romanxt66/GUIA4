@@ -14,7 +14,7 @@ def registrar_usuario() -> tuple[Response, int]:
 
         nuevo_user = Usuario(
             username=payload['username'],
-            password=clave_segura,  # ← corregido (era password_hash)
+            password=clave_segura, 
             rol=payload.get('rol', 'Operario')
         )
 
