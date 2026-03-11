@@ -1,9 +1,11 @@
 from flask import Blueprint, request, jsonify, Response
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, get_jwt
-from models import db, Usuario
+from models import db, Usuario, Producto
 
 api_bp = Blueprint('api', __name__)
+
+
 
 @api_bp.route('/usuarios/registrar', methods=['POST'])
 def registrar_usuario() -> tuple[Response, int]:
@@ -14,23 +16,38 @@ def registrar_usuario() -> tuple[Response, int]:
 
         nuevo_user = Usuario(
             username=payload['username'],
-            password=clave_segura, 
+            password=clave_segura,
             rol=payload.get('rol', 'Operario')
         )
 
         db.session.add(nuevo_user)
         db.session.commit()
 
-        return jsonify({"mensaje": "Éxito", "data": nuevo_user.serializar()}), 201
+        return jsonify({
+            "mensaje": "Usuario registrado correctamente",
+            "data": nuevo_user.serializar()
+        }), 201
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": "Fallo de integridad", "detalle": str(e)}), 400
+        return jsonify({
+            "error": "Fallo de integridad",
+            "detalle": str(e)
+        }), 400
+
+
 
 @api_bp.route('/usuarios', methods=['GET'])
 def listar_usuarios() -> tuple[Response, int]:
+
     pagina = request.args.get('page', 1, type=int)
-    paginacion = Usuario.query.paginate(page=pagina, per_page=10, error_out=False)
+
+    paginacion = Usuario.query.paginate(
+        page=pagina,
+        per_page=10,
+        error_out=False
+    )
+
     resultado = [u.serializar() for u in paginacion.items]
 
     return jsonify({
@@ -39,11 +56,16 @@ def listar_usuarios() -> tuple[Response, int]:
         "usuarios": resultado
     }), 200
 
+
+
 @api_bp.route('/login', methods=['POST'])
 def login() -> tuple[Response, int]:
+
     payload = request.get_json()
 
-    usuario = Usuario.query.filter_by(username=payload.get('username')).first()
+    usuario = Usuario.query.filter_by(
+        username=payload.get('username')
+    ).first()
 
     if usuario and check_password_hash(usuario.password, payload.get('password')):
 
@@ -52,9 +74,14 @@ def login() -> tuple[Response, int]:
             additional_claims={"rol": usuario.rol}
         )
 
-        return jsonify({"mensaje": "Login exitoso", "token": token_acceso}), 200
+        return jsonify({
+            "mensaje": "Login exitoso",
+            "token": token_acceso
+        }), 200
 
     return jsonify({"error": "Credenciales inválidas"}), 401
+
+
 
 @api_bp.route('/inventario/critico', methods=['POST'])
 @jwt_required()
@@ -65,22 +92,41 @@ def modificar_inventario() -> tuple[Response, int]:
     rol = claims.get("rol")
 
     if rol != "Admin":
-        return jsonify({"error": "Forbidden: Requiere privilegios de Administrador"}), 403
+        return jsonify({
+            "error": "Forbidden: Requiere privilegios de Administrador"
+        }), 403
 
     return jsonify({
         "mensaje": "Acceso concedido al servidor.",
         "operador": usuario_actual
     }), 200
 
-@api_bp.route('/inventario', methods=['POST'])
+
+
+@api_bp.route('/productos', methods=['POST'])
 @jwt_required()
-def insertar_inventario() -> tuple[Response, int]:
-    
+def crear_producto() -> tuple[Response, int]:
+
+    claims = get_jwt()
+    rol = claims.get("rol")
+
+    if rol != "Admin":
+        return jsonify({
+            "error": "Forbidden: solo Admin puede crear productos"
+        }), 403
+
     datos = request.get_json()
 
-    return jsonify({
-        "mensaje": "Producto insertado correctamente",
-        "producto": datos
-    }), 201    
+    nuevo_producto = Producto(
+        nombre=datos["nombre"],
+        cantidad=datos["cantidad"],
+        precio=datos["precio"]
+    )
 
-   
+    db.session.add(nuevo_producto)
+    db.session.commit()
+
+    return jsonify({
+        "mensaje": "Producto creado correctamente",
+        "producto": nuevo_producto.serializar()
+    }), 201
